@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using WorkflowCore.Interface;
+using WorkflowCore.Models;
 using WorkflowCore.Tests.Workflows;
 
 namespace WorkflowCore.Tests
@@ -16,14 +17,23 @@ namespace WorkflowCore.Tests
             _host = CreateWorkflowHost();
             _host.RegisterWorkflow<HelloWorldWorkflow>();
             _host.RegisterWorkflow<SampleWorkflow>();
+            _host.RegisterWorkflow<SleepWorkflow>();
 
             _host?.Start();
+           
         }
 
         [TearDown]
         public void TearDown()
         {
             _host?.Stop();
+
+            if (_host is IDisposable disposableHost)
+            {
+                disposableHost.Dispose();
+            }
+
+            _host = null;
         }
 
         [Test]
@@ -33,17 +43,31 @@ namespace WorkflowCore.Tests
         }
 
         [Test]
-        public void HellowWorldWorkflow_Run()
+        public async Task HellowWorldWorkflow_Run()
         {
-            _host.StartWorkflow("HelloWorld", 1, null);
+            var workflowId =  await _host.StartWorkflow("HelloWorld", null, Guid.NewGuid().ToString());
+
+            WaitForWorkflowToComplete(workflowId);
 
             Assert.Pass();
         }
 
         [Test]
-        public void SampleWorkflow_Run()
+        public async Task SampleWorkflow_Run()
         {
-            _host.StartWorkflow("SampleWorkflow", 1, null);
+            
+           var workflowId =  await _host.StartWorkflow("SampleWorkflow", null, Guid.NewGuid().ToString());
+            WaitForWorkflowToComplete(workflowId);
+
+            Assert.Pass();
+        }
+
+        [Test]
+        public async Task SleepWorkflow_Run()
+        {
+
+            var workflowId = await _host.StartWorkflow("SleepWorkflow", null, Guid.NewGuid().ToString());
+            WaitForWorkflowToComplete(workflowId);
 
             Assert.Pass();
         }
@@ -55,6 +79,20 @@ namespace WorkflowCore.Tests
             serviceCollection.AddWorkflow();
             var serviceProvider = serviceCollection.BuildServiceProvider();
             return serviceProvider.GetService<IWorkflowHost>();
+        }
+
+        private void WaitForWorkflowToComplete(string workflowId, int timeoutSeconds = 10)
+        {
+            var startTime = DateTime.Now;
+            while ((DateTime.Now - startTime).TotalSeconds < timeoutSeconds)
+            {
+                var status = _host.PersistenceStore.GetWorkflowInstance(workflowId).Result;
+
+                if (status.Status == WorkflowStatus.Complete || status.Status == WorkflowStatus.Terminated)
+                    break;
+
+                Thread.Sleep(500);  // Check every 0.5 seconds
+            }
         }
     }
 }
